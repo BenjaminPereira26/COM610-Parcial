@@ -1,5 +1,7 @@
 # COM610-Parcial
 
+Las capturas de verificación se encuentran en la carpeta [`evidencias/`](./evidencias/)[cite: 1]
+
 # API Libros — Examen Parcial 2 (COM610)
 
 **Universidad San Francisco Xavier de Chuquisaca**  
@@ -68,3 +70,49 @@ curl -X DELETE http://54.211.67.54/libros/1
 
 ```
 
+## CI/CD y enlaces de verificación
+
+- **URL pública de la API:** `http://54.211.67.54`
+- **Workflow CI (`.github/workflows/ci.yml`):** [Enlace a una ejecución exitosa en GitHub Actions]
+- **Workflow CD (`.github/workflows/cd.yml`):** [Enlace a una ejecución exitosa en GitHub Actions]
+
+## Pruebas automatizadas y ejecución con Docker
+
+### Ejecutar pruebas (Jest + Supertest)
+Las pruebas utilizan un doble/mock de la capa de datos y no requieren conexión a una instancia RDS real:
+
+```bash
+npm ci
+npm test
+```
+
+Construir y probar la imagen Docker localmente
+```bash
+docker build -t api-libros:local .
+docker run --rm -p 3000:3000 \
+  -e PORT=3000 \
+  -e DB_HOST=localhost \
+  -e DB_PORT=3306 \
+  -e DB_USER=usuario_prueba \
+  -e DB_PASSWORD=password_prueba \
+  -e DB_NAME=libros_db \
+  api-libros:local
+```
+
+#### 3. Flujo de CI/CD y cómo verificar el despliegue
+Explica brevemente cómo actúan `.github/workflows/ci.yml` y `.github/workflows/cd.yml`, cómo se protege el despliegue (solo en cambios incorporados a la rama principal, no en `pull_request`, con trabajos dependientes y validación de `/health` y `/libros` conservando/restaurando la versión anterior si falla) y cómo comprobar el despliegue en EC2[cite: 1]:
+
+```markdown
+## Despliegue automatizado (CD) y verificación
+
+1. **Integración continua (`ci.yml`):** ejecuta `npm ci` y `npm test` en cada `push` y `pull_request` hacia la rama principal.
+2. **Despliegue continuo (`cd.yml`):** en cambios en la rama principal (no en `pull_request`), ejecuta en orden: pruebas, construcción y publicación de la imagen Docker etiquetada con el SHA del commit (`$GITHUB_SHA`) en el registro de contenedores, y despliegue en EC2 usando GitHub Secrets.
+3. **Aislamiento y proxy:** el contenedor corre en EC2 recibiendo las variables de RDS por entorno y escuchando a través de **Nginx** en el puerto `80` (sin exponer el puerto `3000` a Internet).
+4. **Verificación post-despliegue:** el workflow comprueba `/health` y consulta `/libros`; si falla, detiene el despliegue y conserva o restaura la versión anterior.
+
+Para verificar manualmente tras un despliegue:
+
+```bash
+curl -i [http://54.211.67.54/health](http://54.211.67.54/health)
+curl -i [http://54.211.67.54/libros](http://54.211.67.54/libros)
+```
