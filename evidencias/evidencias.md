@@ -208,4 +208,10 @@ Verificar que Docker Hub funciona:
 
 ## Demostrar conservación de la versión anterior ante fallos
 
+![](images/img55.png)
 
+![](images/img56.png)
+
+Conservacion
+
+![](images/img57.png)
