@@ -1,0 +1,132 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  # ============================================================
+  # JOB 1: Ejecutar pruebas
+  # ============================================================
+  test:
+    name: Ejecutar pruebas
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias (npm ci)
+        run: npm ci
+
+      - name: Ejecutar pruebas (npm test)
+        run: npm test
+
+  # ============================================================
+  # JOB 2: Construir y publicar imagen Docker con tag SHA
+  # ============================================================
+  build-and-push:
+    name: Construir y publicar imagen Docker
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login en Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Construir y publicar imagen con tag SHA
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/api-libros:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/api-libros:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================
+  # JOB 3: Desplegar en EC2 (solo si test y build pasaron)
+  # ============================================================
+  deploy:
+    name: Desplegar en EC2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Desplegar nueva versión vía SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+
+            IMAGE="${{ secrets.DOCKER_USERNAME }}/api-libros:${{ github.sha }}"
+            echo "🚀 Desplegando imagen: $IMAGE"
+
+            # 1) Descargar la nueva imagen
+            docker pull "$IMAGE"
+
+            # 2) Arrancar versión nueva en puerto 3001 (sin tocar la actual en 3000)
+            docker rm -f api-libros-new 2>/dev/null || true
+            docker run -d --name api-libros-new --restart unless-stopped \
+              -p 3001:3000 \
+              -e PORT=3000 \
+              -e DB_HOST="${{ secrets.DB_HOST }}" \
+              -e DB_USER="${{ secrets.DB_USER }}" \
+              -e DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+              -e DB_NAME="${{ secrets.DB_NAME }}" \
+              "$IMAGE"
+
+            # 3) Health check de la versión nueva
+            echo "⏳ Esperando health check..."
+            sleep 5
+            if ! curl -f http://localhost:3001/health; then
+              echo "❌ Health check FALLÓ. Se conserva la versión anterior."
+              docker rm -f api-libros-new 2>/dev/null || true
+              exit 1
+            fi
+            echo "✅ Health check OK. Promoviendo nueva versión."
+
+            # 4) Detener y eliminar la versión anterior
+            docker rm -f api-libros 2>/dev/null || true
+
+            # 5) Arrancar versión nueva en el puerto oficial 3000
+            docker run -d --name api-libros --restart unless-stopped \
+              -p 3000:3000 \
+              -e PORT=3000 \
+              -e DB_HOST="${{ secrets.DB_HOST }}" \
+              -e DB_USER="${{ secrets.DB_USER }}" \
+              -e DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+              -e DB_NAME="${{ secrets.DB_NAME }}" \
+              "$IMAGE"
+
+            # 6) Limpiar contenedor temporal
+            docker rm -f api-libros-new 2>/dev/null || true
+
+            # 7) Verificación final en el puerto 3000
+            sleep 3
+            if ! curl -f http://localhost:3000/health; then
+              echo "❌ Verificación final FALLÓ."
+              exit 1
+            fi
+
+            # 8) (Opcional) Limpiar imágenes viejas para no llenar el disco
+            docker image prune -f
+
+            echo "✅ Despliegue completado exitosamente: $IMAGE"
