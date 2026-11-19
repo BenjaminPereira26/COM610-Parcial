@@ -7,7 +7,7 @@ app.use(express.json());
 
 // Health Check
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', service: 'api-libros', version: 'v2' });
+  res.status(500).json({ status: 'error' });
 });
 
 // GET todos los libros

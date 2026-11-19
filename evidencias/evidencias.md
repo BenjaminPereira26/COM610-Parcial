@@ -197,8 +197,15 @@ Verificar que Docker Hub funciona:
 ![](images/img51.png)
 
 
-
+## Demostrar "cambio visible"
 
 ![](images/img52.png)
+
+![](images/img53.png)
+
+![](images/img54.png)
+
+
+## Demostrar conservación de la versión anterior ante fallos
 
 
