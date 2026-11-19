@@ -179,5 +179,26 @@ Verificar que Docker Hub funciona:
 
 ![](images/img45.png)
 
+## Sugir a github
+
+![](images/img46.png)
+
+![](images/img47.png)
+
+
+## Verificar el despliegue
+
+![](images/img48.png)
+
+![](images/img49.png)
+
+![](images/img50.png)
+
+![](images/img51.png)
+
+
+
+
+![](images/img52.png)
 
 
